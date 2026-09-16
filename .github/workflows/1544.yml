@@ -44,21 +44,27 @@ jobs:
 
     steps:
       - name: 🚚 检出代码仓库 / Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: ⚙ 设置 Node.js / Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
 
       - name: ⚙ 启用 Corepack 安装 pnpm / Enable Corepack for pnpm
         run: |
           corepack enable
           corepack prepare pnpm@9 --activate
 
-      - name: 📦 安装依赖 / Install dependencies
+      - name: 📦 安装 Worker 依赖 / Install worker dependencies
         working-directory: ./mail-worker
         run: pnpm install --frozen-lockfile
+
+      - name: 📦 安装并构建前端依赖 / Install & build Vue frontend
+        working-directory: ./mail-vue
+        run: |
+          pnpm install
+          pnpm run build
 
       - name: 📡 禁用 Wrangler 遥测 / Disable wrangler telemetry
         working-directory: ./mail-worker
@@ -154,8 +160,6 @@ jobs:
           
           echo "🔍 Checking if KV namespace exists..."
           KV_RAW=$(pnpm wrangler kv namespace list 2>&1 || true)
-          
-          # 提取可能的 ID（同时兼容 JSON 格式和控制台输出）
           KV_ID=$(echo "$KV_RAW" | grep -A 2 -B 2 "$NAME" | grep -oE '[a-f0-9]{32}' | head -n 1 || echo "")
           
           if [ -z "$KV_ID" ]; then
@@ -187,8 +191,6 @@ jobs:
           
           echo "🔍 Checking if D1 database exists..."
           DB_RAW=$(pnpm wrangler d1 list 2>&1 || true)
-          
-          # UUID 正则匹配：提取关联到该名称的 D1 UUID
           D1_ID=$(echo "$DB_RAW" | grep -A 2 -B 2 "$NAME" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -n 1 || echo "")
           
           if [ -n "$D1_ID" ]; then
@@ -198,7 +200,6 @@ jobs:
             CREATE_RAW=$(pnpm wrangler d1 create "$NAME" 2>&1 || true)
             D1_ID=$(echo "$CREATE_RAW" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -n 1 || echo "")
             
-            # 如果创建提示已存在，强制重新通过 info 获取
             if [ -z "$D1_ID" ]; then
               INFO_RAW=$(pnpm wrangler d1 info "$NAME" 2>&1 || true)
               D1_ID=$(echo "$INFO_RAW" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -n 1 || echo "")
