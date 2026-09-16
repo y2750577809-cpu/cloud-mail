@@ -44,27 +44,27 @@ jobs:
 
     steps:
       - name: 🚚 检出代码仓库 / Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: ⚙ 设置 Node.js / Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: ⚙ 启用 Corepack 安装 pnpm / Enable Corepack for pnpm
         run: |
           corepack enable
           corepack prepare pnpm@9 --activate
 
-      - name: 📦 安装 Worker 依赖 / Install worker dependencies
-        working-directory: ./mail-worker
-        run: pnpm install --frozen-lockfile
-
       - name: 📦 安装并构建前端依赖 / Install & build Vue frontend
         working-directory: ./mail-vue
         run: |
           pnpm install
           pnpm run build
+
+      - name: 📦 安装 Worker 依赖 / Install worker dependencies
+        working-directory: ./mail-worker
+        run: pnpm install --frozen-lockfile
 
       - name: 📡 禁用 Wrangler 遥测 / Disable wrangler telemetry
         working-directory: ./mail-worker
@@ -131,6 +131,9 @@ jobs:
           name = "email"
           EOF
           fi
+
+          # 清理原 toml 中可能存在的重复 build 钩子，防止部署时重复调用挂起
+          sed -i '/\[build\]/,/command = .*/d' "$CONFIG_FILE" || true
 
           sed -i "s|\${NAME}|${NAME}|g" "$CONFIG_FILE"
           sed -i "s|\${CUSTOM_DOMAIN}|${CUSTOM_DOMAIN}|g" "$CONFIG_FILE"
@@ -219,13 +222,13 @@ jobs:
       - name: 🚀 开始部署 / Start deployment
         id: deploy
         working-directory: ./mail-worker
+        env:
+          CI: "true"
         run: |
           echo "🚀 Starting deployment..."
-          set -o pipefail
-          pnpm wrangler deploy -c wrangler-action.toml 2>&1 \
-            | tee deploy.log \
-            | grep --line-buffered -v "https://.*\.workers\.dev" \
-            | sed -E 's/env\.domain .*/env.domain (***)/'
+          
+          # 直接输出实时日志，规避复杂管道缓冲与交互挂起
+          pnpm wrangler deploy -c wrangler-action.toml 2>&1 | tee deploy.log
           
           WORKER_URL=$(grep -o "https://[a-zA-Z0-9.-]*\.workers\.dev" deploy.log | head -n 1 || echo "")
           
